@@ -6,6 +6,18 @@
     "defaultValue": "0"
   },
   {
+    "property": "mod.gmailpeek.important_only",
+    "label": "Show only unread Important mail in the inbox",
+    "type": "checkbox",
+    "defaultValue": true
+  },
+  {
+    "property": "mod.gmailpeek.max_age_days",
+    "label": "Filter unread emails to within N days (e.g., 7 for one week; 0 for no limit)",
+    "type": "string",
+    "defaultValue": "7"
+  },
+  {
     "property": "mod.gmailpeek.max_items",
     "label": "Max emails shown in the preview",
     "type": "string",

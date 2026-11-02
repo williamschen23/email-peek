@@ -28,12 +28,15 @@ through the session you're already signed in with.
 
 1. Install [Sine](https://github.com/CosmoCreeper/Sine) — the JS mod loader
    for Zen/Firefox forks. No browser recompile needed.
-2. In Zen: `Settings → Sine` → paste this repo's URL into the install field.
-3. Pin your mail tab (or drag it to Essentials). Hover. Done.
+2. In Zen: `Settings → Sine` → enable **"Enable installing JS from unofficial sources. (unsafe, use at your own risk)"** (or set `sine.allow-unsafe-js` to `true` in `about:config`).
+   > *Note:* Sine blocks JavaScript for mods installed via repo URLs until this toggle is enabled, as it treats external URLs as unofficial sources until published on the Sine store.
+3. In Zen: `Settings → Sine` → paste this repo's URL into the install field.
+4. Fully restart Zen (`Cmd + Q` / quit and reopen).
+5. Pin your mail tab (or drag it to Essentials, using `https://mail.google.com/`). Hover. Done.
 
 > Marketplace status: not on the Sine store yet. A submission went in, the
 > store's automation tripped over its own shoelaces before it could read the
-> manifest, and a resubmit is queued. Installing by repo URL works fine today.
+> manifest, and a resubmit is queued. Installing by repo URL works fine today once unofficial JS is enabled.
 
 ## Gmail Peek
 
@@ -82,6 +85,8 @@ In Sine → Mod Settings (or `about:config`):
 | Pref | Default | What |
 | --- | --- | --- |
 | `mod.gmailpeek.account` | `0` | Fallback account index when a tab URL has no `/u/N/` |
+| `mod.gmailpeek.important_only` | `true` | Show only unread Important mail in the inbox |
+| `mod.gmailpeek.max_age_days` | `7` | Only show unread mail received in the last N days (0 = no limit) |
 | `mod.gmailpeek.max_items` | `6` | Emails shown in the popup |
 | `mod.gmailpeek.hover_delay` | `400` | ms before the preview opens |
 | `mod.gmailpeek.hide_delay` | `150` | ms before the preview closes on mouse-out |

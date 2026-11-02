@@ -29,7 +29,7 @@
   // renders the whole report into a real browser tab — plain HTML, plain
   // links, no chrome APIs required at click time.
   const EPDiag = (window.__EPDiag ||= (() => {
-    const VERSION = "1.8.1";
+    const VERSION = "1.8.2";
     const CONTACT = {
       email: "malachyfernandez@gmail.com",
       github: "https://github.com/malachyfernandez/email-peek",
@@ -379,8 +379,10 @@ document.getElementById("email").addEventListener("click", () => copyReport(true
   // Default account index when a tab's URL doesn't carry /u/N/.
   const defaultAccount = () =>
     sPref("mod.gmailpeek.account", "0").trim() || "0";
-  const feedUrl = acct =>
-    `https://mail.google.com/mail/u/${encodeURIComponent(acct)}/feed/atom`;
+  const feedUrl = (acct, label = "") => {
+    const tag = label ? `/${encodeURIComponent(label)}` : "";
+    return `https://mail.google.com/mail/u/${encodeURIComponent(acct)}/feed/atom${tag}`;
+  };
   const inboxUrl = acct =>
     `https://mail.google.com/mail/u/${encodeURIComponent(acct)}/#inbox`;
   const composeUrl = acct =>
@@ -1084,9 +1086,12 @@ document.getElementById("email").addEventListener("click", () => copyReport(true
     }
 
     async fetchFeed(acct, containerId = 0, tab = null) {
-      const url = feedUrl(acct);
+      const importantOnly = bPref("mod.gmailpeek.important_only", true);
+      const customLabel = sPref("mod.gmailpeek.label", "").trim();
+      const label = customLabel || (importantOnly ? "^iim" : "");
+      const url = feedUrl(acct, label);
       const t0 = Date.now();
-      const meta = { acct, ctx: containerId };
+      const meta = { acct, url, ctx: containerId };
       let text;
       if (containerId > 0) {
         EPDiag.log("feed", "request", { acct, url, ctx: containerId, via: "xpcom" });
@@ -1103,7 +1108,7 @@ document.getElementById("email").addEventListener("click", () => copyReport(true
         try {
           res = await fetch(url, init);
         } catch (e) {
-          EPDiag.log("feed", "request threw", { acct, ms: Date.now() - t0, err: String(e) });
+          EPDiag.log("feed", "request threw", { acct, url, ms: Date.now() - t0, err: String(e) });
           throw e;
         }
         meta.status = res.status;
@@ -1143,6 +1148,9 @@ document.getElementById("email").addEventListener("click", () => copyReport(true
         throw new Error("signed-out");
       }
       const entries = [...doc.getElementsByTagNameNS("*", "entry")].map(e => ({
+        id:
+          e.getElementsByTagNameNS("*", "id")[0]?.textContent?.trim() ||
+          e.getElementsByTagNameNS("*", "link")[0]?.getAttribute("href") || "",
         title:
           e.getElementsByTagNameNS("*", "title")[0]?.textContent?.trim() ||
           "(no subject)",
@@ -1157,6 +1165,22 @@ document.getElementById("email").addEventListener("click", () => copyReport(true
       }));
       const count =
         parseInt(countEl?.textContent ?? "", 10) || entries.length;
+      return this.filterFeedEntries({ count, entries });
+    }
+
+    filterFeedEntries(feedData) {
+      const maxAgeDays = iPref("mod.gmailpeek.max_age_days", 7);
+      let entries = feedData.entries;
+      if (maxAgeDays > 0) {
+        const cutoff = Date.now() - maxAgeDays * 86400000;
+        entries = entries.filter(e => {
+          const t = Date.parse(e.issued);
+          return !Number.isFinite(t) || t >= cutoff;
+        });
+      }
+      const rawCount = feedData.count;
+      const hadOlder = entries.length < feedData.entries.length;
+      const count = hadOlder ? entries.length : (rawCount || entries.length);
       return { count, entries };
     }
 

@@ -1,10 +1,11 @@
+
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import test from "node:test";
 import vm from "node:vm";
 
-const testConsole = { ...console, warn() {} };
+const testConsole = { ...console, warn() { } };
 const source = readFileSync(new URL("./proton-peek.uc.js", import.meta.url), "utf8");
 const context = {
   window: {},
@@ -50,7 +51,7 @@ function uiNode() {
     textContent: "",
     className: "",
     attributes: {},
-    classList: { add() {}, remove() {}, toggle() {} },
+    classList: { add() { }, remove() { }, toggle() { } },
     setAttribute(name, value) { this.attributes[name] = value; },
     appendChild(child) { this.children.push(child); return child; },
     replaceChildren(...children) { this.children = children; },
@@ -82,7 +83,7 @@ for (const [name, Peek, prefix, get, load] of [
     peek.labelForTab = () => "Inbox";
     peek.box = uiNode();
     peek.panel = { state: "open" };
-    peek.paintBadge = () => {};
+    peek.paintBadge = () => { };
     return { peek, tab, key: name === "Gmail" ? "0@0" : tab };
   }
 
@@ -151,7 +152,7 @@ for (const [name, Peek, prefix, get, load] of [
 }
 
 function scraper(document) {
-  const scope = { JSWindowActorChild: class {}, console };
+  const scope = { JSWindowActorChild: class { }, console };
   vm.runInNewContext(CHILD_SOURCE.replace("export class ProtonPeekChild", "globalThis.ProtonPeekChild = class ProtonPeekChild"), scope);
   const child = new scope.ProtonPeekChild();
   child.document = document;
@@ -301,7 +302,7 @@ test("release builds have no routine or debug console logging", () => {
 
 test("query timeouts are explicit; successful and rejected queries are handled", async () => {
   const peek = new ProtonPeek();
-  await assert.rejects(peek.queryActor({ sendQuery: () => new Promise(() => {}) }, "ProtonPeek:Ping", {}, 5), /actor-query-timeout: ProtonPeek:Ping/);
+  await assert.rejects(peek.queryActor({ sendQuery: () => new Promise(() => { }) }, "ProtonPeek:Ping", {}, 5), /actor-query-timeout: ProtonPeek:Ping/);
   const value = await peek.queryActor({ sendQuery: (_, data) => Promise.resolve({ ok: true, requestId: data.requestId }) }, "ProtonPeek:Ping", {}, 20);
   assert.equal(value.ok, true);
   assert.equal(value.requestId, 2);
@@ -312,13 +313,13 @@ test("startup imports actual emitted sources before registering restricted actor
   const files = new Map();
   let options;
   context.PathUtils = { profileDir: "/fixture", join: (...parts) => parts.join("/") };
-  context.IOUtils = { makeDirectory: async () => {}, writeUTF8: async (path, content) => files.set(path.split("/").pop(), content) };
+  context.IOUtils = { makeDirectory: async () => { }, writeUTF8: async (path, content) => files.set(path.split("/").pop(), content) };
   context.fetch = async () => ({ ok: true });
   context.ChromeUtils = {
     importESModule: uri => {
       const code = files.get(uri.split("/").pop());
       assert.ok(code, "preflight loads a file written by ensureActor");
-      const scope = { JSWindowActorParent: class {}, JSWindowActorChild: class {}, Services: context.Services };
+      const scope = { JSWindowActorParent: class { }, JSWindowActorChild: class { }, Services: context.Services };
       vm.runInNewContext(code.replace(/export class (\w+)/, "globalThis.$1 = class $1"), scope);
       return scope;
     },
@@ -397,7 +398,7 @@ test("an SPA shell is not accepted as a successfully empty mailbox", async () =>
 // ---------- Outlook Peek ----------
 
 function outlookScraper(document) {
-  const scope = { JSWindowActorChild: class {}, console };
+  const scope = { JSWindowActorChild: class { }, console };
   vm.runInNewContext(O_CHILD_SOURCE.replace("export class OutlookPeekChild", "globalThis.OutlookPeekChild = class OutlookPeekChild"), scope);
   const child = new scope.OutlookPeekChild();
   child.document = document;
@@ -568,7 +569,7 @@ test("Outlook empty SPA shell is not accepted as a successfully empty mailbox", 
 // ---------- iCloud Peek ----------
 
 function icloudScraper(document) {
-  const scope = { JSWindowActorChild: class {}, console };
+  const scope = { JSWindowActorChild: class { }, console };
   vm.runInNewContext(I_CHILD_SOURCE.replace("export class ICloudPeekChild", "globalThis.ICloudPeekChild = class ICloudPeekChild"), scope);
   const child = new scope.ICloudPeekChild();
   child.document = document;
@@ -781,6 +782,135 @@ test("Gmail 401 annotates the container context in the error", async () => {
   await assert.rejects(peek.fetchFeed("0", 0, null), /HTTP 401$/);
 });
 
+test("Gmail feed targets Important in inbox (^iim) by default", async () => {
+  const peek = new GmailPeek();
+  const requestedUrls = [];
+  gmailContext.fetch = async (url) => {
+    requestedUrls.push(url);
+    return {
+      url,
+      ok: true,
+      status: 200,
+      text: async () => `<feed><fullcount>1</fullcount><entry><id>msg-1</id><title>Important Mail</title></entry></feed>`,
+    };
+  };
+
+  const prevDOMParser = gmailContext.DOMParser;
+  gmailContext.DOMParser = class {
+    parseFromString(xml) {
+      return {
+        getElementsByTagName() { return []; },
+        getElementsByTagNameNS(_, tag) {
+          if (tag === "fullcount") return [{ textContent: "1" }];
+          if (tag === "entry") {
+            return [
+              {
+                getElementsByTagNameNS(_, t) {
+                  if (t === "id") return [{ textContent: "msg-1" }];
+                  if (t === "title") return [{ textContent: "Important Mail" }];
+                  return [];
+                },
+              },
+            ];
+          }
+          return [];
+        },
+      };
+    }
+  };
+
+  try {
+    const res = await peek.fetchFeed("0", 0, null);
+    assert.equal(requestedUrls.length, 1);
+    assert.equal(requestedUrls[0], "https://mail.google.com/mail/u/0/feed/atom/%5Eiim");
+    assert.equal(res.entries.length, 1);
+    assert.equal(res.entries[0].title, "Important Mail");
+    assert.equal(res.count, 1);
+  } finally {
+    gmailContext.DOMParser = prevDOMParser;
+  }
+});
+
+test("Gmail feed falls back to full inbox when important_only is false", async () => {
+  const peek = new GmailPeek();
+  const requestedUrls = [];
+  gmailContext.fetch = async (url) => {
+    requestedUrls.push(url);
+    return { url, ok: false, status: 500 };
+  };
+  const origGetPrefType = gmailContext.Services.prefs.getPrefType;
+  const origGetBoolPref = gmailContext.Services.prefs.getBoolPref;
+  try {
+    gmailContext.Services.prefs.PREF_BOOL = 128;
+    gmailContext.Services.prefs.getPrefType = (n) => (n === "mod.gmailpeek.important_only" ? 128 : 0);
+    gmailContext.Services.prefs.getBoolPref = (n) => (n === "mod.gmailpeek.important_only" ? false : true);
+    await assert.rejects(peek.fetchFeed("0", 0, null), /HTTP 500/);
+    assert.equal(requestedUrls.length, 1);
+    assert.equal(requestedUrls[0], "https://mail.google.com/mail/u/0/feed/atom");
+  } finally {
+    gmailContext.Services.prefs.getPrefType = origGetPrefType;
+    gmailContext.Services.prefs.getBoolPref = origGetBoolPref;
+  }
+});
+
+test("Gmail filters entries older than max_age_days", async () => {
+  const peek = new GmailPeek();
+  const threeDaysAgo = new Date(Date.now() - 3 * 86400000).toISOString();
+  const tenDaysAgo = new Date(Date.now() - 10 * 86400000).toISOString();
+  gmailContext.fetch = async (url) => ({
+    url,
+    ok: true,
+    status: 200,
+    text: async () => "<feed><entry></entry></feed>",
+  });
+  const prevDOMParser = gmailContext.DOMParser;
+  gmailContext.DOMParser = class {
+    parseFromString(xml) {
+      const hasEntries = xml.includes("<entry>");
+      return {
+        getElementsByTagName() { return []; },
+        getElementsByTagNameNS(_, tag) {
+          if (tag === "fullcount") return [{ textContent: hasEntries ? "2" : "0" }];
+          if (tag === "entry") {
+            if (!hasEntries) return [];
+            return [
+              {
+                getElementsByTagNameNS(_, t) {
+                  if (t === "id") return [{ textContent: "recent-1" }];
+                  if (t === "title") return [{ textContent: "Recent" }];
+                  if (t === "issued") return [{ textContent: threeDaysAgo }];
+                  if (t === "name") return [{ textContent: "Alice" }];
+                  if (t === "link") return [{ getAttribute: () => "https://mail.google.com/1" }];
+                  return [];
+                },
+              },
+              {
+                getElementsByTagNameNS(_, t) {
+                  if (t === "id") return [{ textContent: "old-2" }];
+                  if (t === "title") return [{ textContent: "Old" }];
+                  if (t === "issued") return [{ textContent: tenDaysAgo }];
+                  if (t === "name") return [{ textContent: "Bob" }];
+                  if (t === "link") return [{ getAttribute: () => "https://mail.google.com/2" }];
+                  return [];
+                },
+              },
+            ];
+          }
+          return [];
+        },
+      };
+    }
+  };
+  try {
+    const res = await peek.fetchFeed("0", 0, null);
+    assert.equal(res.entries.length, 1);
+    assert.equal(res.entries[0].title, "Recent");
+    assert.equal(res.count, 1);
+  } finally {
+    gmailContext.DOMParser = prevDOMParser;
+  }
+});
+
 test("diagnostics singleton dedupes repeats and renders the log", () => {
   const diag = gmailContext.window.__EPDiag;
   assert.ok(diag, "EPDiag singleton exists after script load");
@@ -841,7 +971,7 @@ test("provider scans ignore unrelated pinned tabs and summarize only match chang
     pinned,
     linkedBrowser: { currentURI: { spec: url } },
     hasAttribute: name => name === "zen-essential" && false,
-    addEventListener() {},
+    addEventListener() { },
   });
   const mail = makeTab("https://mail.google.com/mail/u/0/");
   const other = makeTab("https://calendar.google.com/calendar/u/0/r/week");
@@ -866,7 +996,7 @@ test("Gmail releases a tab claimed while lazy once its URL resolves elsewhere", 
     linkedBrowser: { get currentURI() { return { spec: state.url }; } },
     hasAttribute: () => false,
     getAttribute: name => (name === "label" ? "Inbox (3) - a@gmail.com" : null),
-    addEventListener() {},
+    addEventListener() { },
     querySelector: sel => (sel === ".gmailpeek-badge" ? badge : null),
   };
   gmailContext.gBrowser = { tabs: [tab] };
